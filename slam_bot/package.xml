@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>slam_bot</name>
+  <version>0.0.0</version>
+  <description>The slam_bot package</description>
+
+  <!-- One license tag required, multiple allowed, one license per tag -->
+  <!-- Commonly used license strings: -->
+  <!--   BSD, MIT, Boost Software License, GPLv2, GPLv3, LGPLv2.1, LGPLv3 -->
+  <license>GPLv2</license>
+
+  <maintainer email="todo@todo.com">Ussama</maintainer>
+
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <!-- The export tag contains other, unspecified, tags -->
+  <export>
+  </export>
+</package>
