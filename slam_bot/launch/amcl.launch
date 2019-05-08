@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <launch>
 
-  <include file="$(find slam_bot)/launch/udacity_world.launch" />
+  <include file="$(find slam_bot)/launch/world.launch" />
  
   <!-- Map server -->
   <arg name="map_file" default="$(find slam_bot)/maps/jackal_race.yaml"/>
