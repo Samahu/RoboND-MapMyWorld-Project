@@ -17,7 +17,7 @@
 
 \begin{document}
 
-\title{ROS AMCL Robot Navigation}
+\title{World Mapping Using ROS RTAB-Map}
 
 \author{Ussama Naal}
 
@@ -26,12 +26,12 @@
 \IEEEtitleabstractindextext{%
 
 \begin{abstract}
-In this work we investigate the use an MCL variant algorithm known as AMCL. We do this within a simulated environment using ROS and Gazebo. We setup a two wheeled robot with a map that has a given track. The robot is then equipped with a rangefinder and an odometer to track the robot motion. We then feed the readings from these sensors to AMCL ros package and let it control the robot. With a bit of tuning for the parameters of AMCL and other ros packages the the robot can successfully navigate to the target goal.
+This work. investigates the use of one implementation of a Graph-based SLAM known as RTAB-Map, in order to create a 3D mapping of a given site. Within a simulated environment used Gazebo and ROS, we deploy a two wheeled robot equipped with a laser scanner and an RGB-D camera and runs a ros package that implements the RTAB-Map algorithm. We test the configured robot under two different sites and demonstrate obtained results.
 \end{abstract}
 
-% Note that keywords are not normally used for peerreview papers.
+% Note that keywords are not normally used for peer-review papers.
 \begin{IEEEkeywords}
-Robot navigation, ROS, particle filter, MCL, AMCL.
+world mapping, ROS, slam, GraphSLAM, RTAB-Map.
 \end{IEEEkeywords}}
 
 
@@ -41,178 +41,137 @@ Robot navigation, ROS, particle filter, MCL, AMCL.
 \section{Introduction}
 \label{sec:introduction}
 
-\IEEEPARstart To carry out a successful robot navigation within a given world or map, the robot must be able to locate itself within that map. For this, robots are typically equipped with multiple sensors such as cameras, laser scanners, odometers, etc. These sensors help the robot identify its surrounding area as it moves through out the map. For example, laser scanners give the robot a measurement of how far obstacles like walls are from the robot. An odometer tracks the path that robot is moving along from the initial pose.
+%TODO Real Time Appearance Based Mapping
 
-\begin{figure}[thpb]
-      \centering
-      \includegraphics[width=\linewidth]{robot-image.png}
-      \caption{Image of our test robot.}
-      \label{fig:cnn-classifier}
-\end{figure}
+\IEEEPARstart Successful robot navigation requires having an accurate representation of the world that robot traverses through. When a detailed map of the world is not readily available to the robot or current map is not up to date, in the case, the robot could rely on its sensors to survey the site and build a good approximation of the site. Moreover, since the set of the sensors that the robot rely on could be subject to noise and inaccuracies which leads to drift in the robot position, the robot can at the same time utilize the map being created in order to find the actual location of the robot within the map. This process is known as Simultaneous Localization and Mapping (SLAM). In next section we outline the problem and available solutions. In section 3, we review our robot configuration. In section 4, we review achieved results when running the RTAB-Map algorithm against two different environments. We discuss these results in section 5. Finally, in section 6, we provide conclusions and hint at future work.
 
 \section{Background / Formulation}
-As mentioned, the sensors provide the robot with measurements that can help the robot estimate its position within the map. However, the measurements supplied by the sensors may not be fully accurate due to noise. Kalman filters can reduce the impact of the noise on the measurements if the noise has a Gaussian distribution and the system is linear. Extended Kalman Filters can work for system that are non-linear in nature but still requires the noise to follow a Gaussian distribution. However, when this is not the case a better alternative would be to employ MCL or Particles Filter. Particles filter work for non-linear systems and doesn't require that noise coming from sensor measurements to have a Gaussian distribution.
 
-The following listing shows the basic steps in the MCL algorithm:
 
-\begin{algorithm}
-\SetAlgoLined
-\caption{MCL Algorithm}
-\SetKwFunction{FMCL}{MCL}
-\SetKwProg{Fn}{Function}{:}{\KwRet{$X_t$}}
-\Fn{\FMCL{$X_{t-1}$, $u_t$, $z_t$}}{
-    $\bar{X_t} = X_t = {\phi}$\;
-    \For {m=1 to M}{
-        $X_t^{[m]} = motion\_update(u_t, x_{t-1}^{[m]})$;
-        $w_t^{[m]} = sensor\_update(z_t, x_t^{[m]})$;
-        $\bar{X_t} = \bar{X_t} + < x_t^{[m]}, w_t^{[m]} >$;
-    }
-    \For {m=1 To M} {
-        Draw $X_t^{[m]}$ from $\bar{X_t}$ with probability \propto $w_t^{[m]}$;
-        $X_t = X_t^{[m]}$;
-    }
-}
-\end{algorithm}
+SLAM deals with the case when the robot has only access to its sensors data and knowledge of its own movement. Using available data the robots tries to estimate the map and its position within the estimated map. The main challenge with estimating the map lies within the count of state variable to describe the map. Another challenge is when dealing with a representation that contain repetitive patterns causing uncertainty when estimating the robot pose. Known SLAM-based approaches can be categorized into five categories: Extended Kalman Filter SLAM (EKF) \cite{ekf-slam-wiki}, Sparse Extended Filter Information SLAM (SEIF) \cite{seif}, Extended Information Form (EIF) \cite{maybeck1982stochastic}, FastSLAM \cite{Montemerlo02fastslam:a} and GraphSLAM \cite{thrun2006graph}.
 
-\section{Model Configuration}
-Our robot is composed of a main chassis and two large side wheels. To help keep the robot stable we add two caster wheels at the front and the back of the robot as shown below:
+In this work we employ the RTAB-Map which is GraphSLAM-based approach. In GraphSLAM, a graph is constructed where nodes represent estimated robot poses and estimated locations of landmarks or identifiable features on the map at a given point in time. Edges on the other hand represent constraints that connect between robot poses and the detected features on the map. There two types of constraints: motion constraint and measurement constraint. Motion constraints represent the distance between robot poses at different times, while measurement constraints represent the distance between a given pose and the distance to a nearby landmark of feature measured by the robot at that pose. Following figure shows this relationship.
+
 \begin{figure}[thpb]
       \centering
-      \includegraphics[width=\linewidth]{gazebo-robot.png}
-      \caption{Robot Setup.}
+      \includegraphics[width=\linewidth]{graph.png}
+      \caption{Constraints Graph.}
+      \label{fig:graph-slam}
+\end{figure}
+
+The robot continues to build the graph as it moves and survey its environment adding new nodes and constraints, however, due to noise and inaccuracies of estimated poses and measurements the constraints may not map properly. This results in an over-determined system which converts the problem into an optimization problem. To solve the system, graph data is organized into an information matrix and an information vector where cells represent the linearized constraint around an estimate between two given nodes. Both data structures gets passed to a numerical solver that returns most probable configuration of the graph.
+
+In GraphSLAM it is essential to detect loop closures when surveying the environment, i.e. identify if the robot has observed the same place again. Detecting loop closures requires comparing current acquired scan of the environment against all previous scans.  This is a very daunting task since complexity increases linearly as the robot acquires new scans. The RTAB-Map performs a set of techniques to the original GraphSLAM to keep the process running near real-time. These techniques can be summarized in: Local/Global Loop Closure Detection, Visual Bag-of-Words, Memory Management.
+
+\section{Robot Configuration}
+We used the robot configuration used in the previous project \cite{ros-amcl-robot-navigation} with one exception. In this robot we replace previous RGB camera with a depth camera also known as an RGB-D camera.
+
+\begin{figure}[thpb]
+      \centering
+      \includegraphics[width=\linewidth]{robot-in-kitchen.png}
+      \caption{Robot in the kitchen environment.}
       \label{fig:network-training}
 \end{figure}
 
-We also equip the robot with a camera at the front of the robot which allows us the see what the robot might be facing while it moves. We place a Hokuyo rangefinder on the top of the robot at the front. The rangefinder measures how far obstacles are from the robot.
+We make sure to update the gazebo files such that sensors data are published to the channels.
 
-Then we enable AMCL ROS package which will guide the robot to a target goal. The AMCL package implements an adaptive version of the MCL algorithm, where the algorithm changes the number of samples used in real-time \cite{what-is-amcl}. Once the robot localizes itself, lower number of samples is required to do the tracking. The advantages of this is a better of efficiency for the robot, and also allows the robot stay responsive with measurements that come from sensors at a higher rate \cite{Fox99montecarlo}.
-
-The following table lists parameters to make the simulation functioning within the system used to run the simulation:
-
-\begin{table}[h]
-\caption{Simulation Update Parameters}
-\label{table_example}
-\begin{center}
-\begin{tabular}{|c||c|}
-\hline
-Parameter & Value\\
-\hline
-transform\_tolerance & 0.2 \\
-\hline
-update\_frequency (Local) & 14 Hz \\
-\hline
-publish\_frequency (Local) & 14 Hz\\
-\hline
-update\_frequency (Global) & 14 Hz \\
-\hline
-publish\_frequency (Global) & 14 Hz \\
-\hline
-controller\_update & 14 Hz \\
-\hline
-\end{tabular}
-\end{center}
-\end{table}
-
-Setting these values is important to have the simulation proceed with no issues or warnings reported on the console.
-
-Next we configure another set of parameters for the costmap as shown in Table 2.
-\begin{table}[h]
-\caption{Costmap Parameters}
-\label{table_example}
-\begin{center}
-\begin{tabular}{|c||c|}
-\hline
-Parameter & Value\\
-\hline
-inflation\_radius & 0.7 \\
-\hline
-inflation\_radius & 0.5 \\
-\hline
-raytrace\_range & 4.0 \\
-\hline
-\end{tabular}
-\end{center}
-\end{table}
-
-These parameters tune the costmap such that it prevents the robot from getting stock against walls or other obstacles on the map.
-
-Finally, we tweak some of the parameters for the AMCL package \cite{ros-amcl} as shown in Table 3.
-\begin{table}[h]
-\caption{AMCL Parameters}
-\label{table_example}
-\begin{center}
-\begin{tabular}{|c||c|}
-\hline
-Parameter & Value\\
-\hline
-min\_particles & 100 \\
-\hline
-max\_particles & 300 \\
-\hline
-initial\_pose\_x & 0.0 \\
-\hline
-initial\_pose\_y & 0.0 \\
-\hline
-initial\_pose\_a & -0.02 \\
-\hline
-update\_min\_d & 0.2 \\
-\hline
-update\_min\_a & 0.52 \\
-\hline
-laser\_mode\_type & likelihood\_field \\
-\hline
-laser\_x\_range & -1.0 \\
-\hline
-laser\_y\_range & -1.0 \\
-\hline
-laser\_max\_beams & 30 \\
-\hline
-laser\_z\_hit & 0.95 \\
-\hline
-laser\_z\_rand & 0.05 \\
-\hline
-odom\_model\_type & diff\_corrected \\
-\hline
-odom\_alpha1 & 0.2 \\
-\hline
-odom\_alpha2 & 0.2 \\
-\hline
-odom\_alpha3 & 0.2 \\
-\hline
-odom\_alpha4 & 0.2 \\
-\hline
-\end{tabular}
-\end{center}
-\end{table}
-
-Default value for the max\_particles is 5000. We limit this to only 300 such that the system doesn't require a huge amount of computation and can still run smoothly within the simulated environment. Ultimately more particles should give better results but at the expense of increased execution time for each iteration of the algorithm.
+\begin{figure}[thpb]
+      \centering
+      \includegraphics[width=\linewidth]{robot-graph.png}
+      \caption{Robot Graph.}
+      \label{fig:network-training}
+\end{figure}
 
 \section{Results}
-With these parameters set we launch the simulation and then run the navigation\_goal executable to configure the goal at run time. Once navigation\_goal is run the robot starts to move around a bit then within 30-60 seconds the robot is able to reach the target goal.
-The following figure shows how the robot successfully navigates to the goal with the right pose:
+
+In this section we review results obtained by deploying the robot with the same algorithm and configuration to two different environments. First environment is the kitchen environment and then a personal one.
+
+\subsection{Kitchen Environment}
+
+The following image shows the configuration of this environment within the simulator:
 
 \begin{figure}[thpb]
       \centering
-      \includegraphics[width=\linewidth]{robot-at-goal.png}
-      \caption{Robot at target location.}
+      \includegraphics[width=\linewidth]{kitchen-environment.png}
+      \caption{Kitchen Environment.}
       \label{fig:network-training}
 \end{figure}
+
+Images in figure 5 and 6 show the path took by the robot and the detected features and how these features where used to correspondence between two different frames.
+
+\begin{figure}[thpb]
+      \centering
+      \includegraphics[width=\linewidth]{rtab-map-viewer.png}
+      \caption{Kitchen Environment: Graph View and Feature Correspondence 1.}
+      \label{fig:network-training}
+\end{figure}
+
+\begin{figure}[thpb]
+      \centering
+      \includegraphics[width=\linewidth]{rtab-map-viewer-corresponence.png}
+      \caption{Kitchen Environment: Graph View and Feature Correspondence 2.}
+      \label{fig:network-training}
+\end{figure}
+
+Finally, Figure 7 shows 3D reconstructed point cloud of the kitchen environment. We can clearly see that RTAB-Map creates a good representation of the environment.
+
+\begin{figure}[thpb]
+      \centering
+      \includegraphics[width=\linewidth]{kitchen-point-cloud.png}
+      \caption{Kitchen Environment: Point cloud generated through RTAB-Map.}
+      \label{fig:network-training}
+\end{figure}
+
+\subsection{Personal Environment}
+
+Using available objects in Gazebo, we construct personal environment that simulate site that has many wrecks and ambulance vehicle and few other objects and trees. Figure 8, displays the configuration used in the personal environment within the simulator.
+
+\begin{figure}[thpb]
+      \centering
+      \includegraphics[width=\linewidth]{personal-environment.png}
+      \caption{Personal Environment.}
+      \label{fig:network-training}
+\end{figure}
+
+Same in previous sub-section, We show the two following images show the path took by the robot and the detected features and how these features where used to correspondence between two different frames:
+
+\begin{figure}[thpb]
+      \centering
+      \includegraphics[width=\linewidth]{rtab-map-viewer-correspondence1.png}
+      \caption{Personal Environment: Graph View and Feature Correspondence 1.}
+      \label{fig:network-training}
+\end{figure}
+
+\begin{figure}[thpb]
+      \centering
+      \includegraphics[width=\linewidth]{rtab-map-viewer-correspondence2.png}
+      \caption{Personal Environment: Graph View and Feature Correspondence 2.}
+      \label{fig:network-training}
+\end{figure}
+
+Lastly, next image shows 3D reconstructed point cloud of the personal environment. We can observe partial re-construction of the scene but the algorithm was successful at closing loops, which caused discontinuities for the 3D constructed scene.
+
+\begin{figure}[thpb]
+      \centering
+      \includegraphics[width=\linewidth]{personal-point-cloud.png}
+      \caption{Personal Environment: Point cloud generated through RTAB-Map.}
+      \label{fig:network-training}
+\end{figure}
+
 
 \section{Discussion}
 
-The robot successfully manages to navigate to the target goal, however, there are still some occasions where the robot enters a stale state. That means there a possible room for improvement and parameter tuning to avoid going into such state.
-
-Default MCL algorithm does not deal with kidnapped robot state. i.e. if the robot was moved to another spot on the map without being notified with change. The AMCL variant, however, can recover from this by continuously spawning few random samples from uniform distributed over the map.
-
-Both MCL and AMCL can be used in scenarios where a given robot needs to localize and track its movement within a known map. Example of such uses are the Knightscope \cite{knightscope} autonomous security guard, where the robot constantly moving around to secure the perimeter of the protected site. Other examples are delivery robots with office or hotel spaces, vacuum cleaning robots, etc.
+Evidently, the algorithm managed to successfully map the kitchen environment but was as successful for the personal environment. The failure to map the personal can be mostly attributed to the lack of sufficient distinguishable features in the environment that the algorithm could rely on. Additionally, due to the size of the personal environment, we navigated the site twice only. This is in order to keep the size of the rtabmap database file within manageable limits.
 
 \section{Conclusion / Future work}
 
-Further tune listed parameters and investigate the remaining list of parameters for the move\_base and AMCL packages.
+As we saw, the rtabmap algorithm can successfully create a good representation of a survey site, given the site has good amount of structure.
 
-Configure and run the system on actual robot.
+For future, we would investigate that fine tuning some of the parameters available in the ROS RTAB-Map package help to successfully map the constructed personal environment.
 
-Addition of other sensors such as RGB-D camera or a LIDAR would give better scan of the surrounding area of the robot and theoretically should improve localization accuracy. However, this would come at the cost of increased processing time, due to larger incoming data from the sensors. As mentioned in \cite{Fox99montecarlo} the responsiveness of the system is also important to successfully perform the localization. Because of that it would necessary to upgrade the system with better hardware for data processing like relying on GPUs. Luckily many hardware vendors are providing good options for GPUs specifically made  for on-board processing for the robot such as NVIDIA's Jetston X2 \cite{nvidia-jetston-x2}.
+Another thing to configure and run the system on hardware that an RGB-D camera and use it to create a 3D mapping of single object or a whole environment such my personal room.
+
+Also, we would like to test the algorithm performance on creating a 3D representation of a living object.
 
 \bibliography{bib}
 \bibliographystyle{ieeetr}
